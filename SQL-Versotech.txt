@@ -1,0 +1,154 @@
+CREATE TABLE EMPRESA (
+    id_empresa SERIAL PRIMARY KEY,
+    razao_social VARCHAR(255) NOT NULL,
+    inativo BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE PRODUTOS (
+    id_produto SERIAL PRIMARY KEY,
+    descricao VARCHAR(255) NOT NULL,
+    inativo BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE VENDEDORES (
+    id_vendedor SERIAL PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    cargo VARCHAR(255) NOT NULL,
+    salario NUMERIC(10, 2) NOT NULL,
+    data_admissao DATE NOT NULL,
+    inativo BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE CLIENTES (
+    id_cliente SERIAL PRIMARY KEY,
+    razao_social VARCHAR(255) NOT NULL,
+    data_cadastro DATE NOT NULL,
+    id_vendedor INT REFERENCES VENDEDORES(id_vendedor),
+    id_empresa INT REFERENCES EMPRESA(id_empresa),
+    inativo BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE CONFIG_PRECO_PRODUTO (
+    id_config_preco_produto SERIAL PRIMARY KEY,
+    id_vendedor INT REFERENCES VENDEDORES(id_vendedor),
+    id_empresa INT REFERENCES EMPRESA(id_empresa),
+    id_produto INT REFERENCES PRODUTOS(id_produto),
+    preco_minimo NUMERIC(10, 2) NOT NULL,
+    preco_maximo NUMERIC(10, 2) NOT NULL
+);
+
+CREATE TABLE PEDIDO (
+    id_pedido SERIAL PRIMARY KEY,
+    id_empresa INT REFERENCES EMPRESA(id_empresa),
+    id_cliente INT REFERENCES CLIENTES(id_cliente),
+    valor_total NUMERIC(10, 2) NOT NULL,
+    data_emissao DATE NOT NULL,
+    situacao VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE ITENS_PEDIDO (
+    id_item_pedido SERIAL PRIMARY KEY,
+    id_pedido INT REFERENCES PEDIDO(id_pedido),
+    id_produto INT REFERENCES PRODUTOS(id_produto),
+    preco_praticado NUMERIC(10, 2) NOT NULL,
+    quantidade INT NOT NULL
+);
+
+
+
+-- Dados para teste --
+
+
+INSERT INTO empresa (razao_social, inativo) VALUES
+    ('Empresa A', FALSE),
+    ('Empresa B', FALSE),
+    ('Empresa C', TRUE);
+
+INSERT INTO produtos (descricao, inativo) VALUES
+    ('Produto 1', FALSE),
+    ('Produto 2', FALSE),
+    ('Produto 3', TRUE);
+
+INSERT INTO vendedores (nome, cargo, salario, data_admissao, inativo) VALUES
+    ('João Silva', 'Vendedor', 3500.00, '2023-01-15', FALSE),
+    ('Maria Santos', 'Gerente de Vendas', 5000.00, '2022-05-20', FALSE),
+    ('Carlos Oliveira', 'Assistente de Vendas', 2800.00, '2023-09-10', FALSE);
+
+INSERT INTO clientes (razao_social, data_cadastro, id_vendedor, id_empresa, inativo) VALUES
+    ('Cliente X', '2023-02-28', 1, 1, FALSE),
+    ('Cliente Y', '2023-05-10', 2, 2, FALSE),
+    ('Cliente Z', '2023-08-15', 3, 1, FALSE);
+
+INSERT INTO pedido (id_empresa, id_cliente, valor_total, data_emissao, situacao) VALUES
+    (1, 1, 1500.00, '2024-06-10', 'Concluído'),
+    (2, 2, 2200.00, '2024-06-15', 'Concluído'),
+    (1, 3, 1800.00, '2024-06-20', 'Pendente');
+
+INSERT INTO itens_pedido (id_pedido, id_produto, preco_praticado, quantidade) VALUES
+    (1, 1, 120.00, 5),
+    (1, 2, 80.00, 10),
+    (2, 3, 200.00, 8);
+
+
+-- Lista de funcionários ordenando pelo salário decrescente--
+
+SELECT id_vendedor, nome, salario
+FROM VENDEDORES
+ORDER BY salario DESC;
+
+-- Lista de pedidos de vendas ordenados por data de emissão--
+
+SELECT id_pedido, id_empresa, id_cliente, valor_total, data_emissao
+FROM PEDIDO
+ORDER BY data_emissao;
+
+-- Valor de faturamento por cliente--
+
+SELECT id_cliente, SUM(valor_total) AS faturamento
+FROM PEDIDO
+GROUP BY id_cliente ORDER BY faturamento ASC;
+
+-- Valor de faturamento por empresa--
+
+SELECT p.id_empresa, SUM(valor_total) AS faturamento
+FROM PEDIDO p
+JOIN CLIENTES c ON p.id_cliente = c.id_cliente
+GROUP BY p.id_empresa order by faturamento asc;
+
+-- Valor de faturamento por vendedor--
+
+SELECT v.id_vendedor, v.nome, SUM(p.valor_total) AS faturamento
+FROM PEDIDO p
+JOIN CLIENTES c ON p.id_cliente = c.id_cliente
+JOIN VENDEDORES v ON c.id_vendedor = v.id_vendedor
+GROUP BY v.id_vendedor, v.nome order by faturamento asc;
+
+
+-- Juncoes
+
+SELECT 
+    P.id_produto,
+    P.descricao,
+    C.id_cliente,
+    C.razao_social AS razao_social_cliente,
+    E.id_empresa,
+    E.razao_social AS razao_social_empresa,
+    V.id_vendedor,
+    V.nome,
+    CP.preco_minimo,
+    CP.preco_maximo,
+    COALESCE(
+        (SELECT IP.preco_praticado
+         FROM ITENS_PEDIDO IP
+         JOIN PEDIDO PD ON IP.id_pedido = PD.id_pedido
+         WHERE IP.id_produto = P.id_produto AND PD.id_cliente = C.id_cliente
+         ORDER BY PD.data_emissao DESC
+         LIMIT 1),
+        CP.preco_minimo
+    ) AS preco_base
+FROM PRODUTOS P
+JOIN CONFIG_PRECO_PRODUTO CP ON P.id_produto = CP.id_produto
+JOIN CLIENTES C ON CP.id_empresa = C.id_empresa
+JOIN EMPRESA E ON C.id_empresa = E.id_empresa
+JOIN VENDEDORES V ON C.id_vendedor = V.id_vendedor;
+
